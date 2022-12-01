@@ -3,11 +3,16 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 
 fn main() -> Result<()> {
-    let reader = BufReader::new(File::open("input")?);
+    let file = "input";
+    let reader =
+        BufReader::new(File::open(file).context(format!("while opening file '{}'", &file))?);
     let mut calories = vec![0];
 
-    for line in reader.lines() {
-        match line.context("error reading from file")?.parse::<i32>() {
+    for (cnt, line) in reader.lines().enumerate() {
+        match line
+            .context(format!("while reading line {} from file '{}'", cnt, file))?
+            .parse::<i32>()
+        {
             Ok(number) => calories[0] += number,
             Err(_) => calories.insert(0, 0),
         }
@@ -15,7 +20,8 @@ fn main() -> Result<()> {
 
     calories.sort_unstable();
     println!(
-        "calories: {:?}",
+        "part 1: {}\npart 2: {}",
+        calories.last().unwrap(),
         calories
             .get(calories.len() - 3..)
             .unwrap()
