@@ -1,15 +1,13 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::fs::File;
-use std::io::Read;
+use std::io::{BufRead, BufReader};
 
 fn main() -> Result<()> {
-    let mut buffer = String::new();
-    File::open("input")?.read_to_string(&mut buffer)?;
-
+    let reader = BufReader::new(File::open("input")?);
     let mut calories = vec![0];
 
-    for line in buffer.split("\n").into_iter() {
-        match line.parse::<i32>() {
+    for line in reader.lines() {
+        match line.context("error reading from file")?.parse::<i32>() {
             Ok(number) => calories[0] += number,
             Err(_) => calories.insert(0, 0),
         }
