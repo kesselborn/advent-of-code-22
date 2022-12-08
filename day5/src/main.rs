@@ -4,8 +4,43 @@ use std::io::{BufRead, BufReader};
 use std::str::FromStr;
 
 #[derive(Debug)]
-struct Stacks {
-    foo: Vec<Vec<char>>,
+struct Stacks(Vec<Vec<char>>);
+
+impl Stacks {
+    fn new() -> Stacks {
+        Stacks(vec![])
+    }
+
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn push(&mut self, line: &str) -> Result<()> {
+        // we rely on the given format: all lines have the same length, even if the
+        // current line does not have an item on the last stack, i.e. it's:
+        // "    [D]    ", not "    [D]" if we have three stacks
+        // In general, the format is: one crate is four characters long, the latter is at index 1
+        // "[W] [B] [T] [F] [L] [T] [M] [F] [T]"
+        // "[T]             [P]     [J]        "
+        //   ^   ^   ^   ^   ^   ^   ^   ^   ^
+        let num_of_chars_per_crate = 4;
+        let num_of_crates = line.len() / 4;
+
+        for i in 0..num_of_crates + 1 {
+            let current_crate = line.chars().nth((i * num_of_chars_per_crate) + 1).unwrap();
+
+            if self.len() <= i {
+                self.0.push(vec![]);
+            }
+
+            if current_crate == ' ' {
+                continue;
+            }
+
+            self.0[i].insert(0, current_crate);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Eq, PartialEq, Debug, Clone)]
@@ -30,15 +65,15 @@ impl Program {
     fn execute(&self, stacks: &mut Stacks) -> String {
         let mut result = String::from("");
         for command in &self.0 {
-            let stack = &mut stacks.foo[(command.from - 1) as usize];
+            let stack = &mut stacks.0[(command.from - 1) as usize];
             let length = stack.len();
-            let mut crates: &mut Vec<char> =
+            let crates: &mut Vec<char> =
                 &mut stack.drain(length - command.count..=length - 1).collect();
             crates.reverse();
 
-            stacks.foo[(command.to - 1) as usize].append(crates);
+            stacks.0[(command.to - 1) as usize].append(crates);
         }
-        for stack in &stacks.foo {
+        for stack in &stacks.0 {
             result.push(*stack.last().unwrap());
         }
 
@@ -66,38 +101,6 @@ impl MoveCommand {
                 bail!("error parsing move command: got line '{}'", s)
             }
         }
-    }
-}
-
-impl Stacks {
-    fn new() -> Stacks {
-        Stacks { foo: vec![] }
-    }
-    fn push(&mut self, line: &str) -> Result<()> {
-        // we rely on the given format: all lines have the same length, even if the
-        // current line does not have an item on the last stack, i.e. it's:
-        // "    [D]    ", not "    [D]" if we have three stacks
-        // In general, the format is: one crate is four characters long, the latter is at index 1
-        // "[W] [B] [T] [F] [L] [T] [M] [F] [T]"
-        // "[T]             [P]     [J]        "
-        //   ^   ^   ^   ^   ^   ^   ^   ^   ^
-        let num_of_chars_per_crate = 4;
-        let num_of_crates = line.len() / 4;
-
-        for i in 0..num_of_crates + 1 {
-            let current_crate = line.chars().nth((i * num_of_chars_per_crate) + 1).unwrap();
-
-            if self.foo.len() <= i {
-                self.foo.push(vec![]);
-            }
-
-            if current_crate == ' ' {
-                continue;
-            }
-
-            self.foo[i].insert(0, current_crate);
-        }
-        Ok(())
     }
 }
 
@@ -145,28 +148,28 @@ fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{MoveCommand, Program};
+    use crate::MoveCommand;
     use std::io::BufReader;
 
     #[test]
     fn push_to_new_stack() {
         let mut stacks = super::Stacks::new();
 
-        assert_eq!(stacks.foo.len(), 0);
+        assert_eq!(stacks.len(), 0);
 
         let result = &stacks.push("    [D]    ");
         assert!(result.is_ok());
 
-        assert_eq!(stacks.foo[0].len(), 1);
-        assert_eq!(stacks.foo.len(), 3);
-        assert_eq!(stacks.foo[1][0], 'D');
+        assert_eq!(stacks.0[0].len(), 0);
+        assert_eq!(stacks.len(), 3);
+        assert_eq!(stacks.0[1][0], 'D');
     }
 
     #[test]
     fn push_to_new_stack2() {
         let mut stacks = super::Stacks::new();
 
-        assert_eq!(stacks.foo.len(), 0);
+        assert_eq!(stacks.len(), 0);
 
         let result = &stacks.push("    [D]    ");
         assert!(result.is_ok());
@@ -175,12 +178,12 @@ mod tests {
         let result = &stacks.push("[Z] [M] [P]");
         assert!(result.is_ok());
 
-        assert_eq!(stacks.foo[0].len(), 2);
-        assert_eq!(stacks.foo[1].len(), 3);
-        assert_eq!(stacks.foo[2].len(), 1);
-        assert_eq!(stacks.foo.len(), 3);
-        assert_eq!(stacks.foo[1][1], 'C');
-        assert_eq!(stacks.foo[1][0], 'M');
+        assert_eq!(stacks.0[0].len(), 2);
+        assert_eq!(stacks.0[1].len(), 3);
+        assert_eq!(stacks.0[2].len(), 1);
+        assert_eq!(stacks.len(), 3);
+        assert_eq!(stacks.0[1][1], 'C');
+        assert_eq!(stacks.0[1][0], 'M');
     }
 
     #[test]
@@ -228,9 +231,9 @@ move 2 from 1 to 8
 
         let (stacks, program) = input_result.unwrap();
 
-        assert_eq!(stacks.foo[0].len(), 8);
-        assert_eq!(stacks.foo[1].len(), 3);
-        assert_eq!(stacks.foo.len(), 9);
+        assert_eq!(stacks.0[0].len(), 8);
+        assert_eq!(stacks.0[1].len(), 3);
+        assert_eq!(stacks.len(), 9);
         assert_eq!(program.0.len(), 7)
     }
 }
