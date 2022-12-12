@@ -1,6 +1,7 @@
+use crate::CrateMoverType::{CrateMover9000, CrateMover9001};
 use anyhow::{bail, Context, Result};
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Seek};
 use std::str::FromStr;
 
 #[derive(Debug)]
@@ -50,6 +51,11 @@ struct MoveCommand {
     count: usize,
 }
 
+enum CrateMoverType {
+    CrateMover9000,
+    CrateMover9001,
+}
+
 #[derive(Debug)]
 struct Program(Vec<MoveCommand>);
 
@@ -62,14 +68,17 @@ impl Program {
         self.0.resize(self.0.len() + 1, command);
     }
 
-    fn execute(&self, stacks: &mut Stacks) -> String {
+    fn execute(&self, stacks: &mut Stacks, mover: CrateMoverType) -> String {
         let mut result = String::from("");
         for command in &self.0 {
             let stack = &mut stacks.0[(command.from - 1) as usize];
             let length = stack.len();
             let crates: &mut Vec<char> =
                 &mut stack.drain(length - command.count..=length - 1).collect();
-            crates.reverse();
+
+            if let CrateMover9000 = mover {
+                crates.reverse();
+            }
 
             stacks.0[(command.to - 1) as usize].append(crates);
         }
@@ -132,17 +141,16 @@ where
 
 fn main() -> Result<()> {
     let file_name = "input";
-    let file = File::open(&file_name).context(format!("while opening file '{}'", &file_name))?;
+    let mut file =
+        File::open(&file_name).context(format!("while opening file '{}'", &file_name))?;
 
-    let (mut stacks, program) = parse_input(BufReader::new(file))?;
+    let (mut stacks, program) = parse_input(BufReader::new(&file))?;
 
-    println!("part1: {}", program.execute(&mut stacks));
+    println!("part1: {}", program.execute(&mut stacks, CrateMover9000));
 
-    //    file.rewind()?;
-    //    println!(
-    //        "part2: {}",
-    //        overlap_check(BufReader::new(&file), partial_overlapp)?
-    //    );
+    file.rewind()?;
+    let (mut stacks, program) = parse_input(BufReader::new(&file))?;
+    println!("part2: {}", program.execute(&mut stacks, CrateMover9001));
     Ok(())
 }
 
