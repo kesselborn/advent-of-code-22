@@ -5,11 +5,13 @@ use std::str::Split;
 
 use anyhow::{bail, Context, Result};
 
+#[derive(Clone)]
 struct File {
     name: String,
     size: u32,
 }
 
+#[derive(Clone)]
 struct Dir {
     name: String,
     dirs: Box<Vec<Dir>>,
@@ -75,6 +77,20 @@ impl Dir {
         }
 
         size + self.files.iter().fold(0, |acc: u32, file| acc + file.size)
+    }
+
+    fn dir_sizes(&self, sums: &mut Vec<u32>) {
+        for dir in self.dirs.iter() {
+            sums.push(dir.total_size());
+            dir.dir_sizes(sums);
+        }
+    }
+
+    fn total_sum_of_all_dirs_smaller_then(&self, max_size: u32) -> u32 {
+        let mut dir_sizes = vec![];
+        self.dir_sizes(&mut dir_sizes);
+
+        dir_sizes.iter().filter(|x| **x < max_size).sum()
     }
 }
 
@@ -161,7 +177,6 @@ fn parse_session(line_iterator: &mut Split<&str>, current_dir: &mut Dir) -> Resu
 #[cfg(test)]
 mod tests {
     use crate::{parse_line, Dir, ParseResult};
-    use std::fmt::format;
 
     #[test]
     fn parse_cd_command() {
@@ -292,5 +307,8 @@ $ ls
         let root_dir = fs.find_dir("/");
         assert!(root_dir.is_ok());
         assert_eq!(root_dir.as_ref().unwrap().total_size(), 48381165);
+
+        let sums_of_dirs_below_1000000 = fs.total_sum_of_all_dirs_smaller_then(1_000_000);
+        assert_eq!(sums_of_dirs_below_1000000, 95437);
     }
 }
