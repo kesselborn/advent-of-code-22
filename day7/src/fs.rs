@@ -11,8 +11,8 @@ pub struct File {
 #[derive(Clone)]
 pub struct Dir {
     pub(crate) name: String,
-    pub(crate) dirs: Box<Vec<Dir>>,
-    pub(crate) files: Box<Vec<File>>,
+    pub(crate) dirs: Vec<Dir>,
+    pub(crate) files: Vec<File>,
 }
 
 impl Display for Dir {
@@ -26,8 +26,8 @@ impl Dir {
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
-            dirs: Box::new(vec![]),
-            files: Box::new(vec![]),
+            dirs: vec![],
+            files: vec![],
         }
     }
 
