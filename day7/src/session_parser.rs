@@ -51,7 +51,7 @@ fn parse_session_part(line_iterator: &mut Split<char>, current_dir: &mut Dir) ->
                 }),
                 Ok(ParseResult::Dirname(dirname)) => {
                     let dir = Dir::new(&dirname);
-                    current_dir.dirs.push(dir);
+                    current_dir.sub_dirs.push(dir);
                 }
                 Ok(ParseResult::Command(Command::Cd(cd_command))) => {
                     if cd_command.target == ".." {
@@ -59,13 +59,13 @@ fn parse_session_part(line_iterator: &mut Split<char>, current_dir: &mut Dir) ->
                     }
 
                     if let Some(target_dir) = current_dir
-                        .dirs
+                        .sub_dirs
                         .iter_mut()
                         .find(|dir| dir.name == cd_command.target)
                     {
                         parse_session_part(line_iterator, target_dir)?;
                     } else {
-                        bail!("trying to cd into a non existing directory with name '{}' -- available subdirs: {:?}", cd_command.target, current_dir.dirs.iter().map(|dir| &dir.name).collect::<Vec<_>>())
+                        bail!("trying to cd into a non existing directory with name '{}' -- available subdirs: {:?}", cd_command.target, current_dir.sub_dirs.iter().map(|dir| &dir.name).collect::<Vec<_>>())
                     }
                 }
                 Err(e) => {
@@ -172,20 +172,20 @@ $ ls
         let fs = super::parse_session(SESSION);
         assert!(fs.is_ok(), "error was: {:?}", fs.err());
 
-        let mut fs = fs.unwrap();
+        let fs = fs.unwrap();
 
-        let e_dir = fs.find_dir("e");
+        let e_dir = fs.iter().find(|dir| dir.name == "e");
 
-        assert!(e_dir.is_ok());
+        assert!(e_dir.is_some());
         assert_eq!(&e_dir.as_ref().unwrap().name, "e");
         assert_eq!(e_dir.as_ref().unwrap().total_size(), 584);
 
-        let a_dir = fs.find_dir("a");
-        assert!(a_dir.is_ok());
+        let a_dir = fs.iter().find(|dir| dir.name == "a");
+        assert!(a_dir.is_some());
         assert_eq!(a_dir.as_ref().unwrap().total_size(), 94853);
 
-        let root_dir = fs.find_dir("/");
-        assert!(root_dir.is_ok());
+        let root_dir = fs.iter().find(|dir| dir.name == "/");
+        assert!(root_dir.is_some());
         assert_eq!(root_dir.as_ref().unwrap().total_size(), 48381165);
 
         assert_eq!(fs.total_sum_of_all_dirs_smaller_than(100_000), 95437);

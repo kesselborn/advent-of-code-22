@@ -3,7 +3,7 @@ use std::io::Read;
 use std::{env, fs};
 
 use anyhow::{Context, Result};
-use log::LevelFilter;
+use log::{debug, LevelFilter};
 
 fn main() -> Result<()> {
     let file_name = "input";
@@ -31,6 +31,8 @@ fn main() -> Result<()> {
         "part2: {}",
         &fs.smallest_dir_greater_than(necessary_free_space).unwrap()
     );
+
+    debug!("{fs}");
 
     Ok(())
 }
