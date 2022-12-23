@@ -1,5 +1,6 @@
 use env_logger;
-use log::{debug, LevelFilter};
+use log::{debug, warn, LevelFilter};
+use std::cmp::max;
 use std::fmt::{Display, Formatter};
 use std::io::Read;
 use std::str::Split;
@@ -10,7 +11,7 @@ use anyhow::{bail, Context, Result};
 #[derive(Clone)]
 struct File {
     name: String,
-    size: u32,
+    size: usize,
 }
 
 #[derive(Clone)]
@@ -62,7 +63,7 @@ impl Dir {
             }))),
             ["dir", name] => Ok(ParseResult::Dirname(name.to_string())),
             [size_str, file_name] => {
-                let size: u32 = size_str
+                let size: usize = size_str
                     .parse()
                     .context(format!("error parsing file size from line '{}'", input))?;
                 Ok(ParseResult::File(File {
@@ -141,39 +142,74 @@ impl Dir {
         )
     }
 
-    pub fn total_size(&self) -> u32 {
+    pub fn total_size(&self) -> usize {
         let mut size = 0;
         for dir in self.dirs.iter() {
             size += dir.total_size();
         }
 
-        size + self.files.iter().fold(0, |acc: u32, file| acc + file.size)
+        size + self
+            .files
+            .iter()
+            .fold(0, |acc: usize, file| acc + file.size)
     }
 
-    fn dir_sizes(&self, sums: &mut Vec<(String, u32)>) {
+    fn dir_sizes(&self, sums: &mut Vec<(String, usize)>) {
         for dir in self.dirs.iter() {
             sums.push((dir.clone().name, dir.total_size()));
             dir.dir_sizes(sums);
         }
     }
 
-    pub fn total_sum_of_all_dirs_smaller_then(&self, max_size: u32) -> u32 {
-        let mut dir_sizes: Vec<(String, u32)> = vec![];
+    pub fn dirs_smaller_than(&self, max_size: usize) -> Vec<(String, usize)> {
+        let mut dir_sizes: Vec<(String, usize)> = vec![];
         self.dir_sizes(&mut dir_sizes);
 
         debug!("{:?}", dir_sizes);
-        debug!(
-            "{:?}",
-            dir_sizes
-                .iter()
-                .filter(|x| (**x).1 <= max_size)
-                .collect::<Vec<_>>()
-        );
-        dir_sizes
+
+        dir_sizes = dir_sizes
             .iter()
-            .filter(|x| (**x).1 <= max_size)
-            .map(|tuple| tuple.1)
-            .sum()
+            .filter(|(_, size)| *size <= max_size)
+            .map(|(name, size)| (name.to_owned(), size.to_owned()))
+            .collect::<Vec<_>>();
+
+        debug!("{:?}", dir_sizes);
+
+        dir_sizes
+    }
+
+    pub fn dirs_greater_than(&self, max_size: usize) -> Vec<(String, usize)> {
+        let mut dir_sizes: Vec<(String, usize)> = vec![];
+        self.dir_sizes(&mut dir_sizes);
+
+        debug!("{:?}", dir_sizes);
+
+        dir_sizes = dir_sizes
+            .iter()
+            .filter(|(_, size)| *size >= max_size)
+            .map(|(name, size)| (name.to_owned(), size.to_owned()))
+            .collect::<Vec<_>>();
+
+        debug!("{:?}", dir_sizes);
+
+        dir_sizes
+    }
+
+    pub fn total_sum_of_all_dirs_smaller_then(&self, max_size: usize) -> usize {
+        let small_dirs = self.dirs_smaller_than(max_size);
+
+        small_dirs.iter().fold(0, |acc, (_, size)| size + acc)
+    }
+
+    pub fn smallest_dir_greater_then(&self, max_size: usize) -> Option<usize> {
+        let mut small_dirs = self
+            .dirs_greater_than(max_size)
+            .iter()
+            .map(|(_, size)| size.to_owned())
+            .collect::<Vec<usize>>();
+
+        small_dirs.sort();
+        small_dirs.first().map(|size| size.to_owned())
     }
 }
 
@@ -210,8 +246,14 @@ fn main() -> Result<()> {
     let _ = file.read_to_string(&mut input)?;
 
     let fs = Dir::parse_session(&input)?;
-    println!("part1: {}", fs.total_sum_of_all_dirs_smaller_then(100_000));
-    // println!("part2: {}", find_marker_pos(&input, 14).unwrap());
+    println!("part1: {}", &fs.total_sum_of_all_dirs_smaller_then(100_000));
+
+    let total_fs_size = fs.total_size();
+    let necessary_free_space = 30_000_000 - (70_000_000 - total_fs_size);
+    println!(
+        "part2: {}",
+        &fs.smallest_dir_greater_then(necessary_free_space).unwrap()
+    );
 
     Ok(())
 }
@@ -219,6 +261,29 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use crate::{Dir, ParseResult};
+    const session: &str = r#"$ cd /
+$ ls
+dir a
+14848514 b.txt
+8504156 c.dat
+dir d
+$ cd a
+$ ls
+dir e
+29116 f
+2557 g
+62596 h.lst
+$ cd e
+$ ls
+584 i
+$ cd ..
+$ cd ..
+$ cd d
+$ ls
+4060174 j
+8033020 d.log
+5626152 d.ext
+7214296 k"#;
 
     #[test]
     fn parse_cd_command() {
@@ -306,30 +371,6 @@ mod tests {
 
     #[test]
     fn parse_session() {
-        let session = r#"$ cd /
-$ ls
-dir a
-14848514 b.txt
-8504156 c.dat
-dir d
-$ cd a
-$ ls
-dir e
-29116 f
-2557 g
-62596 h.lst
-$ cd e
-$ ls
-584 i
-$ cd ..
-$ cd ..
-$ cd d
-$ ls
-4060174 j
-8033020 d.log
-5626152 d.ext
-7214296 k"#;
-
         let fs = Dir::parse_session(session);
         assert!(fs.is_ok(), "error was: {:?}", fs.err());
 
@@ -350,5 +391,15 @@ $ ls
         assert_eq!(root_dir.as_ref().unwrap().total_size(), 48381165);
 
         assert_eq!(fs.total_sum_of_all_dirs_smaller_then(100_000), 95437);
+    }
+
+    #[test]
+    fn part2() {
+        let fs = Dir::parse_session(session).unwrap();
+
+        let smallest_dir_below_30_000_000 = fs.smallest_dir_greater_then(30_000_000);
+
+        assert!(smallest_dir_below_30_000_000.is_some());
+        assert_eq!(smallest_dir_below_30_000_000.unwrap(), 24933642);
     }
 }
