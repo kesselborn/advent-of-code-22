@@ -51,6 +51,7 @@ impl Iterator for CoordinateIterator<'_> {
     }
 }
 
+#[derive(Clone, Copy)]
 enum Direction {
     Up,
     Right,
@@ -133,19 +134,37 @@ impl Forrest {
         self.tree_matrix.get(position)
     }
 
+    fn scenic_score(&self, coord: Coordinate) -> usize {
+        let mut scores = vec![];
+        let current_tree_height = self.get_tree_height(coord).unwrap();
+
+        for direction in vec![Up, Right, Down, Left].into_iter() {
+            if let Some(distance) = self
+                .trees(coord, direction)
+                .position(|height| height >= *current_tree_height)
+            {
+                scores.push(distance + 1);
+            } else {
+                scores.push(self.trees(coord, direction).count());
+            }
+        }
+
+        scores.iter().product()
+    }
+
+    pub fn highest_scenic_score(&self) -> usize {
+        self.coordinate_iterator()
+            .map(|coord| self.scenic_score(coord))
+            .max()
+            .unwrap()
+    }
+
     fn is_visible(&self, coord: Coordinate) -> bool {
         let current_tree_height = self.get_tree_height(coord).copied().unwrap();
-        if self.trees(coord, Up).max().unwrap_or(0) < current_tree_height {
-            return true;
-        }
-        if self.trees(coord, Right).max().unwrap_or(0) < current_tree_height {
-            return true;
-        }
-        if self.trees(coord, Down).max().unwrap_or(0) < current_tree_height {
-            return true;
-        }
-        if self.trees(coord, Left).max().unwrap_or(0) < current_tree_height {
-            return true;
+        for direction in vec![Up, Right, Down, Left].into_iter() {
+            if self.trees(coord, direction).max().unwrap_or(0) < current_tree_height {
+                return true;
+            }
         }
 
         false
@@ -221,15 +240,15 @@ mnopqr
         );
     }
 
-    #[test]
-    fn tree_visible() {
-        const INPUT: &str = r#"
+    const INPUT: &str = r#"
 30373
 25512
 65332
 33549
 35390       
 "#;
+    #[test]
+    fn tree_visible() {
         let forrest: Forrest = INPUT.parse().unwrap();
 
         assert!(forrest.is_visible((1, 1).into()));
@@ -237,5 +256,14 @@ mnopqr
         assert!(!forrest.is_visible((1, 3).into()));
 
         assert_eq!(forrest.num_of_visible_trees(), 21);
+    }
+
+    #[test]
+    fn scenic_score() {
+        let forrest: Forrest = INPUT.parse().unwrap();
+
+        assert_eq!(forrest.scenic_score((2, 1).into()), 4);
+        assert_eq!(forrest.scenic_score((2, 3).into()), 8);
+        assert_eq!(forrest.highest_scenic_score(), 8);
     }
 }
