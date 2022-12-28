@@ -1,80 +1,241 @@
-use std::fmt::{Display, Formatter};
+use crate::forrest::Direction::{Down, Left, Right, Up};
+use std::str::FromStr;
 
-struct Forrest(Vec<Vec<char>>);
+#[derive(Default, Debug)]
+pub struct Forrest {
+    tree_matrix: Vec<u8>,
+    width: usize,
+    height: usize,
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+struct Coordinate {
+    x: usize,
+    y: usize,
+}
+
+impl From<(usize, usize)> for Coordinate {
+    fn from(value: (usize, usize)) -> Self {
+        Coordinate {
+            x: value.0,
+            y: value.1,
+        }
+    }
+}
+
+struct CoordinateIterator<'a> {
+    forrest: &'a Forrest,
+    current_coordinate: Option<Coordinate>,
+}
+
+impl Iterator for CoordinateIterator<'_> {
+    type Item = Coordinate;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(ref mut current_coordinate) = self.current_coordinate {
+            current_coordinate.x += 1;
+
+            if current_coordinate.x >= self.forrest.width {
+                current_coordinate.x = 0;
+                current_coordinate.y += 1;
+            }
+
+            if current_coordinate.y >= self.forrest.height {
+                self.current_coordinate = None
+            }
+        } else {
+            self.current_coordinate = Some(Coordinate { x: 0, y: 0 })
+        }
+
+        self.current_coordinate
+    }
+}
 
 enum Direction {
-    WEST,
-    NORTH,
-    EAST,
-    SOUTH,
+    Up,
+    Right,
+    Down,
+    Left,
+}
+
+struct ForrestIterator<'a> {
+    forrest: &'a Forrest,
+    current_coordinate: Coordinate,
+    direction: Direction,
+}
+
+impl Iterator for ForrestIterator<'_> {
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let Coordinate { x, y } = self.current_coordinate;
+        let Forrest {
+            width: max_x,
+            height: max_y,
+            ..
+        } = self.forrest;
+
+        match self.direction {
+            Up if y == 0 => {
+                return None;
+            }
+            Up => {
+                self.current_coordinate.y -= 1;
+            }
+
+            Right if x + 1 >= *max_x => {
+                return None;
+            }
+            Right => {
+                self.current_coordinate.x += 1;
+            }
+
+            Down if y + 1 >= *max_y => {
+                return None;
+            }
+            Down => {
+                self.current_coordinate.y += 1;
+            }
+
+            Left if x == 0 => {
+                return None;
+            }
+            Left => {
+                self.current_coordinate.x -= 1;
+            }
+        }
+
+        self.forrest
+            .get_tree_height(self.current_coordinate)
+            .copied()
+    }
+}
+
+impl FromStr for Forrest {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut forrest = Forrest::default();
+        let rows = s.split('\n').filter(|row| !(*row).is_empty());
+        forrest.height = rows.clone().count();
+        forrest.width = rows.clone().next().unwrap_or_default().len();
+
+        forrest.tree_matrix = rows.collect::<Vec<&str>>().as_slice().join("").into();
+
+        Ok(forrest)
+    }
 }
 
 impl Forrest {
-    fn from_str(input: &str) -> Self {
-        let mut forrest = Forrest(vec![]);
-        for line in input.split('\n') {
-            if line.trim().is_empty() {
-                continue;
-            }
-            let trees = line.chars().collect::<Vec<char>>();
-            forrest.0.push(trees);
-        }
-        forrest
+    fn get_tree_height(&self, coord: Coordinate) -> Option<&u8> {
+        let position = coord.y * self.width + coord.x;
+
+        self.tree_matrix.get(position)
     }
 
-    fn height(&self) -> usize {
-        self.0.len()
+    fn is_visible(&self, coord: Coordinate) -> bool {
+        let current_tree_height = self.get_tree_height(coord).copied().unwrap();
+        if self.trees(coord, Up).max().unwrap_or(0) < current_tree_height {
+            return true;
+        }
+        if self.trees(coord, Right).max().unwrap_or(0) < current_tree_height {
+            return true;
+        }
+        if self.trees(coord, Down).max().unwrap_or(0) < current_tree_height {
+            return true;
+        }
+        if self.trees(coord, Left).max().unwrap_or(0) < current_tree_height {
+            return true;
+        }
+
+        false
     }
 
-    fn width(&self) -> usize {
-        if self.0.len() == 0 {
-            return 0;
-        }
-        self.0[0].len()
-    }
-
-    fn tree_visible(&self, row: usize, column: usize) -> bool {
-        let max_width_index = self.width() - 1;
-        let max_height_index = self.height() - 1;
-        match (row, column) {
-            (_, column) if column == max_height_index || column == 0 => true,
-            (row, _) if row == max_width_index || row == 0 => true,
-            (row, column) => {}
-            _ => false,
+    fn coordinate_iterator(&self) -> CoordinateIterator {
+        CoordinateIterator {
+            forrest: self,
+            current_coordinate: None,
         }
     }
-}
 
-impl Display for Forrest {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        for tree_row in self.0.iter() {
-            writeln!(f, "{}", tree_row.iter().collect::<String>())?;
+    fn trees(&self, start_coordinate: Coordinate, direction: Direction) -> ForrestIterator {
+        ForrestIterator {
+            forrest: self,
+            current_coordinate: start_coordinate,
+            direction,
         }
-        Ok(())
+    }
+
+    pub fn num_of_visible_trees(&self) -> usize {
+        // bool as usize -> false: 0, true: 1
+        self.coordinate_iterator()
+            .fold(0, |acc, coord| acc + self.is_visible(coord) as usize)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::forrest::Direction::{EAST, NORTH, SOUTH, WEST};
+    use crate::forrest::Direction::{Down, Left, Right, Up};
     use crate::forrest::Forrest;
-    const INPUT: &str = r#"123456
-654321
-123456
-"#;
 
     #[test]
-    fn test_parsing() {
-        let forrest = Forrest::from_str(INPUT);
-        assert_eq!(format!("{forrest}"), INPUT)
+    fn forrest_iterator() {
+        const INPUT: &str = r#"
+abcdef
+ghXjkl
+mnopqr
+"#;
+        let start_coordinate = (2, 1).into();
+        let forrest: Forrest = INPUT.parse().unwrap();
+        assert_eq!(
+            *forrest.get_tree_height(start_coordinate).unwrap(),
+            'X' as u8
+        );
+        assert_eq!(
+            forrest
+                .trees(start_coordinate, Up)
+                .map(|c| c as char)
+                .collect::<Vec<char>>(),
+            vec!['c']
+        );
+        assert_eq!(
+            forrest
+                .trees(start_coordinate, Right)
+                .map(|c| c as char)
+                .collect::<Vec<char>>(),
+            vec!['j', 'k', 'l']
+        );
+        assert_eq!(
+            forrest
+                .trees(start_coordinate, Down)
+                .map(|c| c as char)
+                .collect::<Vec<char>>(),
+            vec!['o']
+        );
+        assert_eq!(
+            forrest
+                .trees(start_coordinate, Left)
+                .map(|c| c as char)
+                .collect::<Vec<char>>(),
+            vec!['h', 'g']
+        );
     }
 
     #[test]
-    fn visible_from() {
-        let forrest = Forrest::from_str(INPUT);
-        assert!(forrest.tree_visible_from(0, 0, NORTH));
-        assert!(forrest.tree_visible_from(0, 0, WEST));
-        assert!(!forrest.tree_visible_from(0, 0, EAST));
-        assert!(!forrest.tree_visible_from(0, 0, SOUTH));
+    fn tree_visible() {
+        const INPUT: &str = r#"
+30373
+25512
+65332
+33549
+35390       
+"#;
+        let forrest: Forrest = INPUT.parse().unwrap();
+
+        assert!(forrest.is_visible((1, 1).into()));
+        assert!(!forrest.is_visible((3, 1).into()));
+        assert!(!forrest.is_visible((1, 3).into()));
+
+        assert_eq!(forrest.num_of_visible_trees(), 21);
     }
 }
